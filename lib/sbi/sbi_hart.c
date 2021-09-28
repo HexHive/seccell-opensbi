@@ -151,6 +151,10 @@ static int delegate_traps(struct sbi_scratch *scratch)
 		exceptions |= (1U << CAUSE_STORE_GUEST_PAGE_FAULT);
 	}
 
+	/* Delegate custom SecCells exceptions to supervisor mode */
+	exceptions |= (0xFFUL << 24);
+	exceptions |= (0xFFFFUL << 48);
+
 	csr_write(CSR_MIDELEG, interrupts);
 	csr_write(CSR_MEDELEG, exceptions);
 
