@@ -80,10 +80,130 @@ static int system_opcode_insn(ulong insn, struct sbi_trap_regs *regs)
 	return 0;
 }
 
+#include <string.h>
+#include <inttypes.h>
+#define MATCH_PROT 0x300b
+#define MASK_PROT  0xfe007fff
+#define MATCH_INVAL 0x8000200b
+#define MASK_INVAL  0xfff07fff
+#define MATCH_REVAL 0x200b
+#define MASK_REVAL  0xfe007fff
+
+static int seccell_insn(ulong insn, struct sbi_trap_regs *regs)
+{	
+	int i;
+	struct sbi_trap_info trap;
+
+	trap.epc = regs->mepc;
+	trap.tval2 = 0;
+	trap.tinst = 0;
+
+	/* Emulating SCProt */
+	if((insn & MASK_PROT)  == MATCH_PROT) {
+		uint64_t addr_vpn = GET_RS1(insn, regs) >> 12;
+		uint64_t perm = GET_RS2(insn, regs);
+		uint64_t usid = csr_read(CSR_USID);
+
+		char *ptable = (char *)(uintptr_t)((csr_read(CSR_SATP) & SATP32_PPN) << 12);
+		uint32_t T = ((uint32_t *)ptable)[1];
+		uint32_t N = ((uint32_t *)ptable)[3];
+
+		char *perms = ptable + (16 * 64 * T) + (usid * 64 * T);
+		uint64_t desc[2];
+		for(i = 1; i < N; i++) {
+			memcpy(desc, ptable + (i * 2 * sizeof(uint64_t)), sizeof(desc));
+			uint64_t vpn_start = (desc[0] & ((1ul << 36) - 1));
+			uint64_t vpn_end = ((desc[1] & 0xff) << 28) | (desc[0] >> 36);
+			if((vpn_start <= addr_vpn) && (addr_vpn <= vpn_end))
+				break;
+		}
+
+		/* ChecK: valid address */
+		if(i == N){
+			// trap.cause;
+			// trap.tval;
+			return sbi_trap_redirect(regs, &trap);
+		}
+		/* Check: Valid cell */
+		if(!(desc[1] & (1ul << 63))){
+			// trap.cause;
+			// trap.tval;
+			return sbi_trap_redirect(regs, &trap);
+		}
+
+		uint8_t existing_perms = *(perms + i);
+		if(perm & ~existing_perms)
+			return -1;
+		*(perms + i) = (existing_perms & (~0b1110ul)) | (perm & 0b1110ul);
+		__asm__ __volatile("sfence.vma");
+	}
+	/* Emulating simplified inval */
+	else if ((insn & MASK_INVAL) == MATCH_INVAL) {
+		uint64_t addr_vpn = GET_RS1(insn, regs) >> 12;
+		char *ptable = (char *)(uintptr_t)((csr_read(CSR_SATP) & SATP32_PPN) << 12);
+		uint32_t N = ((uint32_t *)ptable)[3];
+		
+		uint64_t desc[2];
+		for(i = 1; i < N; i++) {
+			memcpy(desc, ptable + (i * 2 * sizeof(uint64_t)), sizeof(desc));
+			uint64_t vpn_start = (desc[0] & ((1ul << 36) - 1));
+			uint64_t vpn_end = ((desc[1] & 0xff) << 28) | (desc[0] >> 36);
+			if((vpn_start <= addr_vpn) && (addr_vpn <= vpn_end))
+				break;
+		}
+
+		/* ChecK: valid address */
+		if(i == N)
+			return -1;
+		/* Check: Already inValid cell */
+		if(!(desc[1] & (1ul << 63)))
+			return -1;
+
+		desc[1] &= ~(1ul << 63);
+		((uint64_t *)(ptable + (i * 2 * sizeof(uint64_t))))[1] = desc[1];
+		__asm__ __volatile("sfence.vma");
+	} /* Emulating simplified reval */
+	else if ((insn & MASK_REVAL) == MATCH_REVAL) {
+		uint64_t addr_vpn = GET_RS1(insn, regs) >> 12;
+		uint64_t perm = GET_RS2(insn, regs);
+		uint64_t usid = csr_read(CSR_USID);
+
+		char *ptable = (char *)(uintptr_t)((csr_read(CSR_SATP) & SATP32_PPN) << 12);
+		uint32_t T = ((uint32_t *)ptable)[1];
+		uint32_t N = ((uint32_t *)ptable)[3];
+		
+		uint64_t desc[2];
+		for(i = 1; i < N; i++) {
+			memcpy(desc, ptable + (i * 2 * sizeof(uint64_t)), sizeof(desc));
+			uint64_t vpn_start = (desc[0] & ((1ul << 36) - 1));
+			uint64_t vpn_end = ((desc[1] & 0xff) << 28) | (desc[0] >> 36);
+			if((vpn_start <= addr_vpn) && (addr_vpn <= vpn_end))
+				break;
+		}
+
+		/* ChecK: valid address */
+		if(i == N)
+			return -1;
+		/* Check: Already Valid cell */
+		if(desc[1] & (1ul << 63))
+			return -1;
+
+		desc[1] |= (1ul << 63);
+
+		*(ptable + (16 * 64 * T) + (usid * 64 * T) + i) = 0xc1 | perm;
+		((uint64_t *)(ptable + (i * 2 * sizeof(uint64_t))))[1] = desc[1];
+		__asm__ __volatile("sfence.vma");
+	} else
+		return -1;
+
+	regs->mepc += 4;
+	return 0;
+}
+
 static illegal_insn_func illegal_insn_table[32] = {
 	truly_illegal_insn, /* 0 */
 	truly_illegal_insn, /* 1 */
-	truly_illegal_insn, /* 2 */
+	seccell_insn,       /* 2 */
 	truly_illegal_insn, /* 3 */
 	truly_illegal_insn, /* 4 */
 	truly_illegal_insn, /* 5 */
