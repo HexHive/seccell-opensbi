@@ -171,6 +171,11 @@ int sbi_trap_redirect(struct sbi_trap_regs *regs,
 		csr_write(CSR_SEPC, trap->epc);
 		csr_write(CSR_SCAUSE, trap->cause);
 
+		/* Emulating a trap, therefore change usid/urid/uxid accordingly */
+		csr_write(CSR_UXID, csr_read(CSR_URID));
+		csr_write(CSR_URID, csr_read(CSR_USID));
+		csr_write(CSR_USID, 0);
+
 		/* Set MEPC to S-mode exception vector base */
 		regs->mepc = csr_read(CSR_STVEC);
 
