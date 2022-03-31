@@ -138,6 +138,9 @@ int __attribute__((noinline)) emulate_scinval(ulong insn, struct sbi_trap_regs *
 		}
 	}
 
+    *(PT(ptable, T, usid, ci)) = RT_D | RT_A;
+    *(PT(ptable, T, 0, ci)) &= ~RT_V;
+
 	desc[1] &= ~(1ul << 63);
 	((uint64_t *)(ptable + (ci * 2 * sizeof(uint64_t))))[1] = desc[1];
 	__asm__ __volatile("sfence.vma");
@@ -191,6 +194,8 @@ int emulate_screval(ulong insn, struct sbi_trap_regs *regs) {
 	}
 
 	desc[1] |= (1ul << 63);
+
+    *(PT(ptable, T, 0, ci)) |= RT_V;
 
 	*(ptable + (16 * 64 * T) + (usid * 64 * T) + ci) = RT_D | RT_A | perm | RT_V;
 	((uint64_t *)(ptable + (ci * 2 * sizeof(uint64_t))))[1] = desc[1];
