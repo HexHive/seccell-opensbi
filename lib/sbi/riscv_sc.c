@@ -89,7 +89,7 @@ int emulate_scprot(ulong insn, struct sbi_trap_regs *regs) {
 int __attribute__((noinline)) emulate_scinval(ulong insn, struct sbi_trap_regs *regs) {
 	int ci, sd;
 	struct sbi_trap_info trap;
-	uint64_t addr_vpn, desc[2], usid;
+	uint64_t addr, addr_vpn, desc[2], usid;
 	char *ptable;
 	uint32_t __attribute__((unused)) N, T, R, M, pperm, gperm;
 
@@ -97,7 +97,7 @@ int __attribute__((noinline)) emulate_scinval(ulong insn, struct sbi_trap_regs *
 	trap.tval2 = 0;
 	trap.tinst = 0;
 
-	addr_vpn = GET_RS1(insn, regs) >> 12;
+	addr_vpn = (addr = GET_RS1(insn, regs)) >> 12;
 	usid = csr_read(CSR_USID);
 	ptable = (char *)(uintptr_t)((csr_read(CSR_SATP) & SATP32_PPN) << 12);
 	N = ((uint32_t *)ptable)[3];
@@ -110,7 +110,7 @@ int __attribute__((noinline)) emulate_scinval(ulong insn, struct sbi_trap_regs *
 	/* ChecK: valid address */
 	if(ci == N){
 		trap.cause = RISCV_EXCP_SECCELL_ILL_ADDR;
-		trap.tval = regs->mepc;
+		trap.tval = addr;
 		return sbi_trap_redirect(regs, &trap);
 	}
 	/* Check: Already inValid cell */
@@ -153,7 +153,7 @@ int __attribute__((noinline)) emulate_scinval(ulong insn, struct sbi_trap_regs *
 int emulate_screval(ulong insn, struct sbi_trap_regs *regs) {
 	int ci;
 	struct sbi_trap_info trap;
-	uint64_t addr_vpn, perm, usid, desc[2];
+	uint64_t addr, addr_vpn, perm, usid, desc[2];
 	char *ptable;
 	uint32_t T, N;
 
@@ -161,7 +161,7 @@ int emulate_screval(ulong insn, struct sbi_trap_regs *regs) {
 	trap.tval2 = 0;
 	trap.tinst = 0;
 
-	addr_vpn = GET_RS1(insn, regs) >> 12;
+	addr_vpn = (addr = GET_RS1(insn, regs)) >> 12;
 	perm = GET_RS2(insn, regs);
 	usid = csr_read(CSR_USID);
 
@@ -183,7 +183,7 @@ int emulate_screval(ulong insn, struct sbi_trap_regs *regs) {
 	/* ChecK: valid address */
 	if(ci == N){
 		trap.cause = RISCV_EXCP_SECCELL_ILL_ADDR;
-		trap.tval = regs->mepc;
+		trap.tval = addr;
 		return sbi_trap_redirect(regs, &trap);
 	}
 	/* Check: Already Valid cell */
