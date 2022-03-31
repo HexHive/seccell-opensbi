@@ -21,18 +21,14 @@ static inline int find_cell(char *ptable, uint64_t *desc, int N, uint64_t addr_v
 	return i;
 }
 
-static int _emulate_scprot(uint64_t addr_vpn, uint8_t perm, struct sbi_trap_regs *regs) {
+static int _emulate_scprot(uint64_t addr, uint8_t perm, struct sbi_trap_regs *regs, unsigned long *tcause, unsigned long *tval) {
 	int ci;
-	struct sbi_trap_info trap;
-	uint64_t usid, desc[2];
+	uint64_t usid, desc[2], addr_vpn;
 	char *ptable, *perms;
 	uint32_t T, N;
 
-	trap.epc = regs->mepc;
-	trap.tval2 = 0;
-	trap.tinst = 0;
-
 	usid = csr_read(CSR_USID);
+    addr_vpn = addr >> 12;
 
 	ptable = (char *)(uintptr_t)((csr_read(CSR_SATP) & SATP32_PPN) << 12);
 	T = ((uint32_t *)ptable)[1];
@@ -43,22 +39,26 @@ static int _emulate_scprot(uint64_t addr_vpn, uint8_t perm, struct sbi_trap_regs
 
 	/* ChecK: valid address */
 	if(ci == N){
-		// trap.cause;
-		// trap.tval;
-		return sbi_trap_redirect(regs, &trap);
+		*tcause = RISCV_EXCP_SECCELL_ILL_ADDR;
+		*tval = addr;
+		return -1;
 	}
 	/* Check: Valid cell */
 	if(!(desc[1] & (1ul << 63))){
-		// trap.cause;
-		// trap.tval;
-		return sbi_trap_redirect(regs, &trap);
+		*tcause = RISCV_EXCP_SECCELL_INV_CELL_STATE;
+		*tval = 0;
+		return -1;
 	}
 
 	uint8_t existing_perms = *(perms + ci);
-	if(perm & ~existing_perms) {
-		// trap.cause;
-		// trap.tval;
-		return sbi_trap_redirect(regs, &trap);
+    if(perm & ~RT_PERMS) {
+		*tcause = RISCV_EXCP_SECCELL_ILL_PERM;
+		*tval = (0 << 8) | (uint8_t)perm;
+		return -1;
+    } else if(perm & ~existing_perms) {
+		*tcause = RISCV_EXCP_SECCELL_ILL_PERM;
+		*tval = (2 << 8) | (uint8_t)perm;
+		return -1;
 	}
 	*(perms + ci) = (existing_perms & (~0b1110ul)) | (perm & 0b1110ul);
 	__asm__ __volatile("sfence.vma");
@@ -67,17 +67,23 @@ static int _emulate_scprot(uint64_t addr_vpn, uint8_t perm, struct sbi_trap_regs
 }
 
 int emulate_scprot(ulong insn, struct sbi_trap_regs *regs) {
-	uint64_t addr_vpn;
+	uint64_t addr;
 	uint8_t perm;
+	struct sbi_trap_info trap;
 
-	addr_vpn = GET_RS1(insn, regs) >> 12;
+	addr = GET_RS1(insn, regs);
 	perm = GET_RS2(insn, regs);
 
-	int ret = _emulate_scprot(addr_vpn, perm, regs);
-	if(ret == 0) 
-		regs->mepc += 4;
+	trap.epc = regs->mepc;
+	trap.tval2 = 0;
+	trap.tinst = 0;
+
+	if(_emulate_scprot(addr, perm, regs, &trap.cause, &trap.tval)) 
+        return sbi_trap_redirect(regs, &trap);
+    
+    regs->mepc += 4;
 	
-	return ret;
+	return 0;
 }
 
 int __attribute__((noinline)) emulate_scinval(ulong insn, struct sbi_trap_regs *regs) {
@@ -103,30 +109,30 @@ int __attribute__((noinline)) emulate_scinval(ulong insn, struct sbi_trap_regs *
 
 	/* ChecK: valid address */
 	if(ci == N){
-		// trap.cause;
-		// trap.tval;
+		trap.cause = RISCV_EXCP_SECCELL_ILL_ADDR;
+		trap.tval = regs->mepc;
 		return sbi_trap_redirect(regs, &trap);
 	}
 	/* Check: Already inValid cell */
 	if(!(desc[1] & (1ull << 63))){
-		// trap.cause;
-		// trap.tval;
+		trap.cause = RISCV_EXCP_SECCELL_INV_CELL_STATE;
+		trap.tval = 0;
 		return sbi_trap_redirect(regs, &trap);
 	}
 
 	for(sd = 1; sd < M; sd++) {
 		if(sd != usid) {
 			pperm = *(PT(ptable, T, sd, ci));
-			if((pperm & 0xe) != 0) {
-				// trap.cause;
-				// trap.tval;
+			if((pperm & RT_PERMS) != 0) {
+                trap.cause = RISCV_EXCP_SECCELL_INV_CELL_STATE;
+                trap.tval = 2;
 				return sbi_trap_redirect(regs, &trap);
 			}
 
 			gperm = *(GT(ptable, R, T, sd, ci));
-			if(gperm != G(-1, 0)) {
-			// 	// trap.cause;
-			// 	// trap.tval;
+			if(gperm != G(SDINV, 0)) {
+                trap.cause = RISCV_EXCP_SECCELL_INV_CELL_STATE;
+                trap.tval = 3;
 				return sbi_trap_redirect(regs, &trap);
 			}
 		}
@@ -160,23 +166,33 @@ int emulate_screval(ulong insn, struct sbi_trap_regs *regs) {
 	T = ((uint32_t *)ptable)[1];
 	N = ((uint32_t *)ptable)[3];
 	
+    if(perm & ~RT_PERMS) {
+		trap.cause = RISCV_EXCP_SECCELL_ILL_PERM;
+		trap.tval = (0 << 8) | (uint8_t)perm;
+		return sbi_trap_redirect(regs, &trap);
+	} else if (!perm) {
+		trap.cause = RISCV_EXCP_SECCELL_ILL_PERM;
+		trap.tval = (1 << 8) | (uint8_t)perm;
+		return sbi_trap_redirect(regs, &trap);
+    }
+
 	ci = find_cell(ptable, desc, N, addr_vpn);
 	/* ChecK: valid address */
 	if(ci == N){
-		// trap.cause;
-		// trap.tval;
+		trap.cause = RISCV_EXCP_SECCELL_ILL_ADDR;
+		trap.tval = regs->mepc;
 		return sbi_trap_redirect(regs, &trap);
 	}
 	/* Check: Already Valid cell */
 	if(desc[1] & (1ul << 63)){
-		// trap.cause;
-		// trap.tval;
+		trap.cause = RISCV_EXCP_SECCELL_INV_CELL_STATE;
+		trap.tval = 1;
 		return sbi_trap_redirect(regs, &trap);
 	}
 
 	desc[1] |= (1ul << 63);
 
-	*(ptable + (16 * 64 * T) + (usid * 64 * T) + ci) = 0xc1 | perm;
+	*(ptable + (16 * 64 * T) + (usid * 64 * T) + ci) = RT_D | RT_A | perm | RT_V;
 	((uint64_t *)(ptable + (ci * 2 * sizeof(uint64_t))))[1] = desc[1];
 	__asm__ __volatile("sfence.vma");
 
@@ -200,7 +216,7 @@ int emulate_scgrant(ulong insn, struct sbi_trap_regs *regs) {
 	perm = IMM_S(insn);
 	usid = csr_read(CSR_USID);
 
-	if((perm & 0xe) == 0) {
+	if((perm & RT_PERMS) == 0) {
 		// trap.cause;
 		// trap.tval;
 		return sbi_trap_redirect(regs, &trap);
@@ -256,7 +272,7 @@ int emulate_screcv(ulong insn, struct sbi_trap_regs *regs) {
 	perm = IMM_S(insn);
 	usid = csr_read(CSR_USID);
 
-	if((perm & 0xe) == 0) {
+	if((perm & RT_PERMS) == 0) {
 		// trap.cause;
 		// trap.tval;
 		return sbi_trap_redirect(regs, &trap);
@@ -307,17 +323,23 @@ int emulate_screcv(ulong insn, struct sbi_trap_regs *regs) {
 }
 
 int emulate_sctfer(ulong insn, struct sbi_trap_regs *regs) {
-	uint64_t addr_vpn;
+	uint64_t addr;
 	uint32_t grantinsn;
+	struct sbi_trap_info trap;
 
-	addr_vpn = GET_RS1(insn, regs);
+	trap.epc = regs->mepc;
+	trap.tval2 = 0;
+	trap.tinst = 0;
+
+	addr = GET_RS1(insn, regs);
 
 	grantinsn = (insn & ~(MASK_TFER)) | MATCH_GRANT;
 	emulate_scgrant(grantinsn, regs);
 
-	_emulate_scprot(addr_vpn, 0, regs);
-	__asm__ __volatile("sfence.vma");
+	if(_emulate_scprot(addr, 0, regs, &trap.cause, &trap.tval)) 
+        return sbi_trap_redirect(regs, &trap);
 
+	__asm__ __volatile("sfence.vma");
 	regs->mepc += 4;
 	return 0;
 }
