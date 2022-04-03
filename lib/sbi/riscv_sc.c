@@ -305,22 +305,22 @@ int emulate_screcv(ulong insn, struct sbi_trap_regs *regs) {
 	grant = *(GT(ptable, R, T, sdsrc, ci));
 	existing_perms = *(PT(ptable, T, usid, ci));
 
-	if((grant >> 3) != usid){
+	if((grant >> 4) != usid){
 		// trap.cause;
 		// trap.tval;
 		return sbi_trap_redirect(regs, &trap);
 	}
-	if(perm & ~(grant & 0x7)) {
+	if(perm & ~(grant & RT_PERMS)) {
 		// trap.cause;
 		// trap.tval;
 		return sbi_trap_redirect(regs, &trap);
 	}
 
-	if(perm == (grant & 0x7)) 
+	if(perm == (grant & RT_PERMS)) 
 		*(GT(ptable, R, T, sdsrc, ci)) = G(-1, 0);
 	else 
-		*(GT(ptable, R, T, sdsrc, ci)) = G(sdsrc, ((grant & 0x7) & ~perm));
-	*(PT(ptable, T, usid, ci)) = existing_perms | perm;
+		*(GT(ptable, R, T, sdsrc, ci)) = G(sdsrc, ((grant & RT_PERMS) & ~perm));
+	*(PT(ptable, T, usid, ci)) = existing_perms | perm | RT_V;
 	__asm__ __volatile("sfence.vma");
 
 	regs->mepc += 4;
