@@ -207,49 +207,60 @@ int emulate_screval(ulong insn, struct sbi_trap_regs *regs) {
 
 int emulate_scgrant(ulong insn, struct sbi_trap_regs *regs) {
 	int ci;
-	uint64_t desc[2], addr_vpn, sdtgt, usid;
+	uint64_t desc[2], addr, addr_vpn, sdtgt, usid;
 	char *ptable, perm, existing_perms;
-	uint32_t N, T, R;
+	uint32_t N, T, R, M;
 	struct sbi_trap_info trap;
 
 	trap.epc = regs->mepc;
 	trap.tval2 = 0;
 	trap.tinst = 0;
 
-	addr_vpn = GET_RS1(insn, regs) >> 12;
+	addr_vpn = (addr = GET_RS1(insn, regs)) >> 12;
 	sdtgt = GET_RS2(insn, regs);
 	perm = IMM_S(insn);
 	usid = csr_read(CSR_USID);
 
-	if((perm & RT_PERMS) == 0) {
-		// trap.cause;
-		// trap.tval;
+	if(perm & ~RT_PERMS) {
+		trap.cause = RISCV_EXCP_SECCELL_ILL_PERM;
+		trap.tval = (0 << 8) | (uint8_t)perm;
+		return sbi_trap_redirect(regs, &trap);
+    } else if((perm & RT_PERMS) == 0) {
+		trap.cause = RISCV_EXCP_SECCELL_ILL_PERM;
+		trap.tval = (1 << 8) | (uint8_t)perm;
 		return sbi_trap_redirect(regs, &trap);
 	}
 
 	ptable = (char *)(uintptr_t)((csr_read(CSR_SATP) & SATP32_PPN) << 12);
 	R = ((uint32_t *)ptable)[0];
 	T = ((uint32_t *)ptable)[1];
+	M = ((uint32_t *)ptable)[2];
 	N = ((uint32_t *)ptable)[3];
+
+	if((sdtgt == 0) || (sdtgt > M)) {
+		trap.cause = RISCV_EXCP_SECCELL_INV_SDID;
+		trap.tval = sdtgt;
+		return sbi_trap_redirect(regs, &trap);
+	}
 
 	ci = find_cell(ptable, desc, N, addr_vpn);
 	/* ChecK: valid address */
 	if(ci == N){
-		// trap.cause;
-		// trap.tval;
+		trap.cause = RISCV_EXCP_SECCELL_ILL_ADDR;
+		trap.tval = addr;
 		return sbi_trap_redirect(regs, &trap);
 	}
-	/* Check: Already Valid cell */
+	/* Check: For Valid cell */
 	if(!(desc[1] & (1ul << 63))) {
-		// trap.cause;
-		// trap.tval;
+		trap.cause = RISCV_EXCP_SECCELL_INV_CELL_STATE;
+		trap.tval = 0;
 		return sbi_trap_redirect(regs, &trap);
 	}
 
 	existing_perms = *(PT(ptable, T, usid, ci));
 	if(perm & ~existing_perms) {
-		// trap.cause;
-		// trap.tval;
+		trap.cause = RISCV_EXCP_SECCELL_ILL_PERM;
+		trap.tval = (2 << 8) | (uint8_t)perm;
 		return sbi_trap_redirect(regs, &trap);
 	}
 
@@ -263,42 +274,54 @@ int emulate_scgrant(ulong insn, struct sbi_trap_regs *regs) {
 
 int emulate_screcv(ulong insn, struct sbi_trap_regs *regs) {
 	int ci;
-	uint64_t desc[2], addr_vpn, sdsrc, usid;
+	uint64_t desc[2], addr, addr_vpn, sdsrc, usid;
 	char *ptable, perm, existing_perms;
-	uint32_t N, T, R, grant;
+	uint32_t M, N, T, R, grant;
 	struct sbi_trap_info trap;
 
 	trap.epc = regs->mepc;
 	trap.tval2 = 0;
 	trap.tinst = 0;
 
-	addr_vpn = GET_RS1(insn, regs) >> 12;
+	addr_vpn = (addr = GET_RS1(insn, regs)) >> 12;
 	sdsrc = GET_RS2(insn, regs);
 	perm = IMM_S(insn);
 	usid = csr_read(CSR_USID);
 
-	if((perm & RT_PERMS) == 0) {
-		// trap.cause;
-		// trap.tval;
+	if(perm & ~RT_PERMS) {
+		trap.cause = RISCV_EXCP_SECCELL_ILL_PERM;
+		trap.tval = (0 << 8) | (uint8_t)perm;
+		return sbi_trap_redirect(regs, &trap);
+    } else if((perm & RT_PERMS) == 0) {
+		trap.cause = RISCV_EXCP_SECCELL_ILL_PERM;
+		trap.tval = (1 << 8) | (uint8_t)perm;
 		return sbi_trap_redirect(regs, &trap);
 	}
 
 	ptable = (char *)(uintptr_t)((csr_read(CSR_SATP) & SATP32_PPN) << 12);
 	R = ((uint32_t *)ptable)[0];
 	T = ((uint32_t *)ptable)[1];
+	M = ((uint32_t *)ptable)[2];
 	N = ((uint32_t *)ptable)[3];
+
+
+	if((sdsrc == 0) || (sdsrc > M)) {
+		trap.cause = RISCV_EXCP_SECCELL_INV_SDID;
+		trap.tval = sdsrc;
+		return sbi_trap_redirect(regs, &trap);
+	}
 
 	ci = find_cell(ptable, desc, N, addr_vpn);
 	/* ChecK: valid address */
 	if(ci == N){
-		// trap.cause;
-		// trap.tval;
+		trap.cause = RISCV_EXCP_SECCELL_ILL_ADDR;
+		trap.tval = addr;
 		return sbi_trap_redirect(regs, &trap);
 	}
-	/* Check: Already Valid cell */
+	/* Check: For Valid cell */
 	if(!(desc[1] & (1ul << 63))) {
-		// trap.cause;
-		// trap.tval;
+		trap.cause = RISCV_EXCP_SECCELL_INV_CELL_STATE;
+		trap.tval = 0;
 		return sbi_trap_redirect(regs, &trap);
 	}
 
@@ -317,7 +340,7 @@ int emulate_screcv(ulong insn, struct sbi_trap_regs *regs) {
 	}
 
 	if(perm == (grant & RT_PERMS)) 
-		*(GT(ptable, R, T, sdsrc, ci)) = G(-1, 0);
+		*(GT(ptable, R, T, sdsrc, ci)) = G(SDINV, 0);
 	else 
 		*(GT(ptable, R, T, sdsrc, ci)) = G(sdsrc, ((grant & RT_PERMS) & ~perm));
 	*(PT(ptable, T, usid, ci)) = existing_perms | perm | RT_V;
