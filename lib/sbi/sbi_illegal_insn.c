@@ -97,7 +97,7 @@ static int seccell_insn(ulong insn, struct sbi_trap_regs *regs)
 	} else if ((insn & MASK_TFER) == MATCH_TFER) {
 		return emulate_sctfer(insn, regs);
 	} else if ((insn & MASK_EXCL) == MATCH_EXCL) {
-
+		return emulate_scexcl(insn, regs);
 	}	else
 		return -1;
 
