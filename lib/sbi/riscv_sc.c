@@ -375,7 +375,8 @@ int emulate_sctfer(ulong insn, struct sbi_trap_regs *regs) {
 int emulate_scexcl(ulong insn, struct sbi_trap_regs *regs) {
 	uint64_t addr, addr_vpn, desc[2], usid;
 	uint32_t gperm;
-	uint8_t perm, *ptable, existing_perms, pperm;
+	uint8_t perm, existing_perms, pperm;
+	char *ptable;
 	int R, T, M, N, ci, sd;
 	struct sbi_trap_info trap;
 
