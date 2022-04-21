@@ -738,6 +738,14 @@ memcmp:
 	REG_L	a0, SBI_TRAP_REGS_OFFSET(a0)(a0)
 .endm
 
+
+.macro	TRAP_CALL_SC_ROUTINE
+	/* Call C routine */
+	add	a0, sp, zero
+	call	sbi_seccell_handler
+.endm
+
+
 	.section .entry, "ax", %progbits
 	.align 3
 	.globl _trap_handler
@@ -749,7 +757,14 @@ _trap_handler:
 
 	TRAP_SAVE_GENERAL_REGS_EXCEPT_SP_T0
 
+	csrr t0, CSR_MCAUSE
+	addi t0, t0, -CAUSE_ILLEGAL_INSTRUCTION
+	bne t0, zero, 1f
+	TRAP_CALL_SC_ROUTINE
+	j 2f
+1:
 	TRAP_CALL_C_ROUTINE
+2:
 
 _trap_exit:
 	TRAP_RESTORE_GENERAL_REGS_EXCEPT_A0_T0

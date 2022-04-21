@@ -81,7 +81,7 @@ static int system_opcode_insn(ulong insn, struct sbi_trap_regs *regs)
 	return 0;
 }
 
-static int seccell_insn(ulong insn, struct sbi_trap_regs *regs)
+int seccell_insn(ulong insn, struct sbi_trap_regs *regs)
 {	
 	/* Emulating SC instructions */
 	if((insn & MASK_PROT)  == MATCH_PROT) {
@@ -99,7 +99,7 @@ static int seccell_insn(ulong insn, struct sbi_trap_regs *regs)
 	} else if ((insn & MASK_EXCL) == MATCH_EXCL) {
 		return emulate_scexcl(insn, regs);
 	}	else
-		return -1;
+		return sbi_illegal_insn_handler(insn, regs);
 
 	return 0;
 }

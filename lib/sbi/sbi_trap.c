@@ -285,6 +285,17 @@ trap_error:
 	return regs;
 }
 
+struct sbi_trap_regs *sbi_seccell_handler(struct sbi_trap_regs *regs) {
+	int rc = SBI_ENOTSUPP;
+
+	ulong mtval = csr_read(CSR_MTVAL);
+	rc = seccell_insn(mtval, regs);
+
+	if (rc)
+		sbi_trap_error("SecureCells error", rc, CAUSE_ILLEGAL_INSTRUCTION, mtval, 0, 0, regs);
+	return regs;
+}
+
 typedef void (*trap_exit_t)(const struct sbi_trap_regs *regs);
 
 /**
