@@ -438,5 +438,6 @@ int emulate_scexcl(ulong insn, struct sbi_trap_regs *regs) {
 	else
 		SET_RD(insn, regs, 1);
 
+	regs->mepc += 4;
 	return 0;
 }
