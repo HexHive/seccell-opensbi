@@ -406,8 +406,8 @@ int emulate_scexcl(ulong insn, struct sbi_trap_regs *regs) {
 	for(sd = 1; sd < M; sd++) {
 		if(sd != usid) {
 			pperm = *scpa(ci, sd);
-			gperm = *scga(ci, sd);
-			if(((pperm & RT_PERMS) != 0) || (gperm != G(SDINV, 0)))
+			gperm = *scga(ci, sd) & 0x0000000F;
+			if ((perm | pperm | gperm) == (pperm | gperm))
 				break;
 		}
 	}
