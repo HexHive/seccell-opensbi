@@ -14,7 +14,6 @@
 
 struct sbi_trap_regs;
 
-int seccell_insn(ulong insn, struct sbi_trap_regs *regs);
 int sbi_illegal_insn_handler(ulong insn, struct sbi_trap_regs *regs);
 
 #endif

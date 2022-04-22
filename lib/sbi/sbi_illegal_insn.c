@@ -16,7 +16,6 @@
 #include <sbi/sbi_pmu.h>
 #include <sbi/sbi_trap.h>
 #include <sbi/sbi_unpriv.h>
-#include <sbi/riscv_sc.h>
 
 typedef int (*illegal_insn_func)(ulong insn, struct sbi_trap_regs *regs);
 
@@ -81,33 +80,10 @@ static int system_opcode_insn(ulong insn, struct sbi_trap_regs *regs)
 	return 0;
 }
 
-int inline seccell_insn(ulong insn, struct sbi_trap_regs *regs)
-{	
-	/* Emulating SC instructions */
-	if((insn & MASK_PROT)  == MATCH_PROT) {
-		return emulate_scprot(insn, regs);
-	}	else if ((insn & MASK_INVAL) == MATCH_INVAL) {
-		return emulate_scinval(insn, regs);
-	} else if ((insn & MASK_REVAL) == MATCH_REVAL) {
-		return emulate_screval(insn, regs);
-	} else if ((insn & MASK_GRANT) == MATCH_GRANT) {
-		return emulate_scgrant(insn, regs);
-	} else if ((insn & MASK_RECV) == MATCH_RECV) {
-		return emulate_screcv(insn, regs);
-	} else if ((insn & MASK_TFER) == MATCH_TFER) {
-		return emulate_sctfer(insn, regs);
-	} else if ((insn & MASK_EXCL) == MATCH_EXCL) {
-		return emulate_scexcl(insn, regs);
-	}	else
-		return sbi_illegal_insn_handler(insn, regs);
-
-	return 0;
-}
-
 static illegal_insn_func illegal_insn_table[32] = {
 	truly_illegal_insn, /* 0 */
 	truly_illegal_insn, /* 1 */
-	seccell_insn,       /* 2 */
+	truly_illegal_insn,       /* 2 */
 	truly_illegal_insn, /* 3 */
 	truly_illegal_insn, /* 4 */
 	truly_illegal_insn, /* 5 */

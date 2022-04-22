@@ -20,6 +20,7 @@
 #include <sbi/sbi_scratch.h>
 #include <sbi/sbi_timer.h>
 #include <sbi/sbi_trap.h>
+#include <sbi/riscv_sc.h>
 
 static void __noreturn sbi_trap_error(const char *msg, int rc,
 				      ulong mcause, ulong mtval, ulong mtval2,
@@ -286,13 +287,28 @@ trap_error:
 }
 
 struct sbi_trap_regs *sbi_seccell_handler(struct sbi_trap_regs *regs) {
-	int rc = SBI_ENOTSUPP;
+	int rc;
 
-	ulong mtval = csr_read(CSR_MTVAL);
-	rc = seccell_insn(mtval, regs);
+	ulong insn = csr_read(CSR_MTVAL);
+	if((insn & MASK_PROT)  == MATCH_PROT) {
+		rc = emulate_scprot(insn, regs);
+	}	else if ((insn & MASK_INVAL) == MATCH_INVAL) {
+		rc = emulate_scinval(insn, regs);
+	} else if ((insn & MASK_REVAL) == MATCH_REVAL) {
+		rc = emulate_screval(insn, regs);
+	} else if ((insn & MASK_GRANT) == MATCH_GRANT) {
+		rc = emulate_scgrant(insn, regs);
+	} else if ((insn & MASK_RECV) == MATCH_RECV) {
+		rc = emulate_screcv(insn, regs);
+	} else if ((insn & MASK_TFER) == MATCH_TFER) {
+		rc = emulate_sctfer(insn, regs);
+	} else if ((insn & MASK_EXCL) == MATCH_EXCL) {
+		rc = emulate_scexcl(insn, regs);
+	}	else
+		rc = sbi_illegal_insn_handler(insn, regs);
 
-	if (rc)
-		sbi_trap_error("SecureCells error", rc, CAUSE_ILLEGAL_INSTRUCTION, mtval, 0, 0, regs);
+	if (unlikely(rc))
+		sbi_trap_error("SecureCells error", rc, CAUSE_ILLEGAL_INSTRUCTION, insn, 0, 0, regs);
 	return regs;
 }
 
