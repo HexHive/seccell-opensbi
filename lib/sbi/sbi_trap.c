@@ -291,19 +291,19 @@ struct sbi_trap_regs *sbi_seccell_handler(struct sbi_trap_regs *regs) {
 
 	ulong insn = csr_read(CSR_MTVAL);
 	if((insn & MASK_PROT)  == MATCH_PROT) {
-		rc = emulate_scprot(insn, regs);
+		rc = emulate_scprot(regs);
 	}	else if ((insn & MASK_INVAL) == MATCH_INVAL) {
-		rc = emulate_scinval(insn, regs);
+		rc = emulate_scinval(regs);
 	} else if ((insn & MASK_REVAL) == MATCH_REVAL) {
-		rc = emulate_screval(insn, regs);
+		rc = emulate_screval(regs);
 	} else if ((insn & MASK_GRANT) == MATCH_GRANT) {
-		rc = emulate_scgrant(insn, regs);
+		rc = emulate_scgrant(regs);
 	} else if ((insn & MASK_RECV) == MATCH_RECV) {
-		rc = emulate_screcv(insn, regs);
+		rc = emulate_screcv(regs);
 	} else if ((insn & MASK_TFER) == MATCH_TFER) {
-		rc = emulate_sctfer(insn, regs);
+		rc = emulate_sctfer(regs);
 	} else if ((insn & MASK_EXCL) == MATCH_EXCL) {
-		rc = emulate_scexcl(insn, regs);
+		rc = emulate_scexcl(regs);
 	}	else
 		rc = sbi_illegal_insn_handler(insn, regs);
 

@@ -6,6 +6,35 @@
 #include <sbi/riscv_asm.h>
 #include <sbi/riscv_sc.h>
 
+static inline  uint64_t get_rs1() {
+	uint64_t rs1;
+	asm volatile("csrr %[rs1], mtirs1"
+							: [rs1] "=r" (rs1));
+
+	return rs1;
+}
+
+static inline  uint64_t get_rs2() {
+	uint64_t rs2;
+	asm volatile("csrr %[rs2], mtirs2"
+							: [rs2] "=r" (rs2));
+
+	return rs2;
+}
+
+static inline  uint64_t get_imm() {
+	uint64_t imm;
+	asm volatile("csrr %[imm], mtiimm"
+							: [imm] "=r" (imm));
+
+	return imm;
+}
+
+static inline void set_rd(uint64_t val) {
+	asm volatile("csrw mtirdval, %[rdval]"
+							:: [rdval] "r" (val));
+}
+
 static int64_t sccck(uint64_t va, uint64_t v) {
 	int64_t i;
 	asm volatile ("sccck %0, %1, %2\n"
@@ -81,13 +110,13 @@ static inline int _emulate_scprot(uint64_t addr, uint8_t perm,
 	return 0;
 }
 
-int emulate_scprot(ulong insn, struct sbi_trap_regs *regs) {
+int emulate_scprot(struct sbi_trap_regs *regs) {
 	uint64_t addr;
 	uint8_t perm;
 	struct sbi_trap_info trap;
 
-	addr = GET_RS1(insn, regs);
-	perm = GET_RS2(insn, regs);
+	addr = get_rs1();
+	perm = get_rs2();
 
 	if(unlikely(_emulate_scprot(addr, perm, regs, &trap.cause, &trap.tval))) {
 		trap.epc = regs->mepc;
@@ -100,14 +129,14 @@ int emulate_scprot(ulong insn, struct sbi_trap_regs *regs) {
 	return 0;
 }
 
-int emulate_scinval(ulong insn, struct sbi_trap_regs *regs) {
+int emulate_scinval(struct sbi_trap_regs *regs) {
 	int64_t ci;
 	struct sbi_trap_info trap;
 	uint64_t sd, addr, usid;
 	uint8_t *ptable;
 	uint32_t M;
 
-	addr = GET_RS1(insn, regs);
+	addr = get_rs1();
 	usid = csr_read(CSR_USID);
 
 	ptable = (uint8_t *)(uintptr_t)((csr_read(CSR_SATP) & SATP64_PPN) << 12);
@@ -159,13 +188,13 @@ int emulate_scinval(ulong insn, struct sbi_trap_regs *regs) {
 	return 0;
 }
 
-int emulate_screval(ulong insn, struct sbi_trap_regs *regs) {
+int emulate_screval(struct sbi_trap_regs *regs) {
 	int64_t ci;
 	struct sbi_trap_info trap;
 	uint64_t addr, perm;
 
-	addr = GET_RS1(insn, regs);
-	perm = GET_RS2(insn, regs);
+	addr = get_rs1();
+	perm = get_rs2();
 
   if(unlikely(perm & ~RT_PERMS)) {
 		trap.epc = regs->mepc;
@@ -204,14 +233,16 @@ int emulate_screval(ulong insn, struct sbi_trap_regs *regs) {
 	return 0;
 }
 
-int emulate_scgrant(ulong insn, struct sbi_trap_regs *regs) {
+int emulate_scgrant(struct sbi_trap_regs *regs) {
 	int64_t ci;
 	uint64_t addr, sdtgt;
 	uint8_t *ptable, perm, existing_perms;
 	uint32_t M;
 	struct sbi_trap_info trap;
 
-	addr = GET_RS1(insn, regs);
+	addr = get_rs1();
+	sdtgt = get_rs2();
+	perm = get_imm();
 	ci = sccck(addr, 1);
 	/* ChecK: valid address */
 	if (unlikely(ci < 0)) {
@@ -227,7 +258,6 @@ int emulate_scgrant(ulong insn, struct sbi_trap_regs *regs) {
 		return sbi_trap_redirect(regs, &trap);
 	}
 
-	sdtgt = GET_RS2(insn, regs);
 	ptable = (uint8_t *)(uintptr_t)((csr_read(CSR_SATP) & SATP64_PPN) << 12);
 	M = ((uint32_t *)ptable)[2];
 	if(unlikely((sdtgt == 0) || (sdtgt > M))) {
@@ -237,7 +267,6 @@ int emulate_scgrant(ulong insn, struct sbi_trap_regs *regs) {
 		return sbi_trap_redirect(regs, &trap);
 	}
 
-	perm = IMM_S(insn);
 	if(unlikely(perm & ~RT_PERMS)) {
 		trap.epc = regs->mepc;
 		trap.cause = RISCV_EXCP_SECCELL_ILL_PERM;
@@ -264,14 +293,17 @@ int emulate_scgrant(ulong insn, struct sbi_trap_regs *regs) {
 	return 0;
 }
 
-int emulate_screcv(ulong insn, struct sbi_trap_regs *regs) {
+int emulate_screcv(struct sbi_trap_regs *regs) {
 	int64_t ci;
 	uint64_t addr, sdsrc, usid;
 	uint8_t *ptable, perm, existing_perms;
 	uint32_t M, grant;
 	struct sbi_trap_info trap;
 
-	addr = GET_RS1(insn, regs);
+	addr = get_rs1();
+	sdsrc = get_rs2();
+	perm = get_imm();
+
 	ci = sccck(addr, 1);
 	/* ChecK: valid address */
 	if (unlikely(ci < 0)) {
@@ -287,7 +319,6 @@ int emulate_screcv(ulong insn, struct sbi_trap_regs *regs) {
 		return sbi_trap_redirect(regs, &trap);
 	}
 
-	sdsrc = GET_RS2(insn, regs);
 	ptable = (uint8_t *)(uintptr_t)((csr_read(CSR_SATP) & SATP64_PPN) << 12);
 	M = ((uint32_t *)ptable)[2];
 	if(unlikely((sdsrc == 0) || (sdsrc > M))) {
@@ -297,7 +328,6 @@ int emulate_screcv(ulong insn, struct sbi_trap_regs *regs) {
 		return sbi_trap_redirect(regs, &trap);
 	}
 
-	perm = IMM_S(insn);
 	if(unlikely(perm & ~RT_PERMS)) {
 		trap.epc = regs->mepc;
 		trap.cause = RISCV_EXCP_SECCELL_ILL_PERM;
@@ -338,15 +368,13 @@ int emulate_screcv(ulong insn, struct sbi_trap_regs *regs) {
 	return 0;
 }
 
-int emulate_sctfer(ulong insn, struct sbi_trap_regs *regs) {
+int emulate_sctfer(struct sbi_trap_regs *regs) {
 	uint64_t addr;
-	uint32_t grantinsn;
 	struct sbi_trap_info trap;
 
-	addr = GET_RS1(insn, regs);
+	addr = get_rs1();
 
-	grantinsn = (insn & ~(MASK_TFER)) | MATCH_GRANT;
-	emulate_scgrant(grantinsn, regs);
+	emulate_scgrant(regs);
 
 	if(_emulate_scprot(addr, 0, regs, &trap.cause, &trap.tval)){
 		trap.epc = regs->mepc;
@@ -358,14 +386,15 @@ int emulate_sctfer(ulong insn, struct sbi_trap_regs *regs) {
 	return 0;
 }
 
-int emulate_scexcl(ulong insn, struct sbi_trap_regs *regs) {
+int emulate_scexcl(struct sbi_trap_regs *regs) {
 	uint64_t sd, addr, usid;
 	uint32_t M, gperm;
 	uint8_t *ptable, perm, existing_perms, pperm;
 	int64_t ci;
 	struct sbi_trap_info trap;
 
-	addr = GET_RS1(insn, regs);
+	addr = get_rs1();
+	perm = get_rs2();
 	ci = sccck(addr, 1);
 	/* ChecK: valid address */
 	if (unlikely(ci < 0)) {
@@ -381,7 +410,6 @@ int emulate_scexcl(ulong insn, struct sbi_trap_regs *regs) {
 		return sbi_trap_redirect(regs, &trap);
 	}
 
-	perm = GET_RS2(insn, regs);
 	existing_perms = *scpa(ci, 0);
   if(unlikely(perm & ~RT_PERMS)) {
 		trap.epc = regs->mepc;
@@ -412,9 +440,9 @@ int emulate_scexcl(ulong insn, struct sbi_trap_regs *regs) {
 		}
 	}
 	if (sd == M) /* Case: Exclusive */
-		SET_RD(insn, regs, 0);
+		set_rd(0);
 	else
-		SET_RD(insn, regs, 1);
+		set_rd(1);
 
 	regs->mepc += 4;
 	return 0;

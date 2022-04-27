@@ -43,12 +43,12 @@
 #define G(sdtgt, perm)              ((sdtgt << 4) | perm)
 #define SDINV                       (-1)
 
-int emulate_scprot(ulong insn, struct sbi_trap_regs *regs);
-int emulate_scinval(ulong insn, struct sbi_trap_regs *regs);
-int emulate_screval(ulong insn, struct sbi_trap_regs *regs);
-int emulate_scgrant(ulong insn, struct sbi_trap_regs *regs);
-int emulate_screcv(ulong insn, struct sbi_trap_regs *regs);
-int emulate_sctfer(ulong insn, struct sbi_trap_regs *regs);
-int emulate_scexcl(ulong insn, struct sbi_trap_regs *regs);
+int emulate_scprot(struct sbi_trap_regs *regs);
+int emulate_scinval(struct sbi_trap_regs *regs);
+int emulate_screval(struct sbi_trap_regs *regs);
+int emulate_scgrant(struct sbi_trap_regs *regs);
+int emulate_screcv(struct sbi_trap_regs *regs);
+int emulate_sctfer(struct sbi_trap_regs *regs);
+int emulate_scexcl(struct sbi_trap_regs *regs);
 
 #endif /* __RISCV_SECCELLS_H__ */
