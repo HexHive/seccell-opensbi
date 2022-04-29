@@ -392,10 +392,12 @@ int emulate_scexcl(struct sbi_trap_regs *regs) {
 	uint8_t *ptable, perm, existing_perms, pperm;
 	int64_t ci;
 	struct sbi_trap_info trap;
+	bool excl;
 
 	addr = get_rs1();
 	perm = get_rs2();
 	ci = sccck(addr, 1);
+	usid = csr_read(CSR_USID);
 	/* ChecK: valid address */
 	if (unlikely(ci < 0)) {
 		trap.epc = regs->mepc;
@@ -428,18 +430,25 @@ int emulate_scexcl(struct sbi_trap_regs *regs) {
 		return -1;
 	}
 
-	ptable = (uint8_t *)(uintptr_t)((csr_read(CSR_SATP) & SATP64_PPN) << 12);
-	M = ((uint32_t *)ptable)[2];
-	usid = csr_read(CSR_USID);
-	for(sd = 1; sd < M; sd++) {
-		if(sd != usid) {
-			pperm = *scpa(ci, sd);
-			gperm = *scga(ci, sd) & 0x0000000F;
-			if ((perm | pperm | gperm) == (pperm | gperm))
-				break;
+	gperm = *scga(ci, usid) & RT_PERMS;
+	if(unlikely((gperm) & perm) != 0) {
+		excl = false;
+	} else {	
+		ptable = (uint8_t *)(uintptr_t)((csr_read(CSR_SATP) & SATP64_PPN) << 12);
+		M = ((uint32_t *)ptable)[2];
+		excl = true;
+		for(sd = 1; sd < M; sd++) {
+			if(sd != usid) {
+				pperm = *scpa(ci, sd);
+				gperm = *scga(ci, sd) & RT_PERMS;
+				if(((pperm | gperm) & perm) != 0) {
+					excl = false;
+					break;
+				}
+			}
 		}
 	}
-	if (sd == M) /* Case: Exclusive */
+	if (excl) /* Case: Exclusive */
 		set_rd(0);
 	else
 		set_rd(1);
