@@ -506,10 +506,7 @@ int emulate_scexcl(struct sbi_trap_regs *regs) {
 			}
 		}
 	}
-	if (excl) /* Case: Exclusive */
-		set_rd(0);
-	else
-		set_rd(1);
+	set_rd(excl);
 
 	regs->mepc += 4;
 	return 0;
