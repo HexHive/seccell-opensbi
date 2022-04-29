@@ -105,7 +105,8 @@ static inline int _emulate_scprot(uint64_t addr, uint8_t perm,
 	}
 
 	*perms = (existing_perms & (~RT_PERMS)) | (perm & RT_PERMS);
-	__asm__ __volatile("sfence.vma");
+	__asm__ __volatile("sfence.vma %[addr]"
+											:: [addr] "r" (addr));
 
 	return 0;
 }
@@ -182,7 +183,8 @@ int emulate_scinval(struct sbi_trap_regs *regs) {
 	*scpa(ci, (uint64_t)(-1l)) &= ~RT_V;
 
 	scca(ci)[1] &= ~(1ul << 63);
-	__asm__ __volatile("sfence.vma");
+	__asm__ __volatile("sfence.vma %[addr]"
+											:: [addr] "r" (addr));
 
 	regs->mepc += 4;
 	return 0;
@@ -227,7 +229,8 @@ int emulate_screval(struct sbi_trap_regs *regs) {
 	*scpa(ci, (uint64_t)(-1l)) |= RT_V;
 
 	scca(ci)[1] |= (1ul << 63);
-	__asm__ __volatile("sfence.vma");
+	__asm__ __volatile("sfence.vma %[addr]"
+											:: [addr] "r" (addr));
 
 	regs->mepc += 4;
 	return 0;
@@ -287,7 +290,8 @@ int emulate_scgrant(struct sbi_trap_regs *regs) {
 	}
 
 	*scga(ci, 0) = G(sdtgt, perm);
-	__asm__ __volatile("sfence.vma");
+	__asm__ __volatile("sfence.vma %[addr]"
+											:: [addr] "r" (addr));
 
 	regs->mepc += 4;
 	return 0;
@@ -362,7 +366,8 @@ int emulate_screcv(struct sbi_trap_regs *regs) {
 	else
 		*scga(ci, sdsrc) = G(sdsrc, ((grant & RT_PERMS) & ~perm));
 	*scpa(ci, 0) = existing_perms | perm | RT_V;
-	__asm__ __volatile("sfence.vma");
+	__asm__ __volatile("sfence.vma %[addr]"
+											:: [addr] "r" (addr));
 
 	regs->mepc += 4;
 	return 0;
@@ -381,7 +386,8 @@ int emulate_sctfer(struct sbi_trap_regs *regs) {
     return sbi_trap_redirect(regs, &trap);
 	}
 
-	__asm__ __volatile("sfence.vma");
+	__asm__ __volatile("sfence.vma %[addr]"
+											:: [addr] "r" (addr));
 	regs->mepc += 4;
 	return 0;
 }
