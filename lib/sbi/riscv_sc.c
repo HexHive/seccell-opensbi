@@ -179,7 +179,11 @@ int emulate_scinval(struct sbi_trap_regs *regs) {
 		}
 	}
 
-	*scpa(ci, 0) = RT_D | RT_A;
+	/* scpa weirdness alert:
+	 * For sd = 0, scpa uses the running usid instead
+	 * If top bit of sd is set, scpa uses usid 0 for supervisor instead 
+	 */
+	*scpa(ci, 0) = RT_D | RT_A | RT_V;
 	*scpa(ci, (uint64_t)(-1l)) &= ~RT_V;
 
 	scca(ci)[1] &= ~(1ul << 63);
@@ -225,6 +229,10 @@ int emulate_screval(struct sbi_trap_regs *regs) {
 		return sbi_trap_redirect(regs, &trap);
 	}
 
+	/* scpa weirdness alert:
+	 * For sd = 0, scpa uses the running usid instead
+	 * If top bit of sd is set, scpa uses usid 0 for supervisor instead 
+	 */
 	*scpa(ci, 0) = RT_D | RT_A | perm | RT_V;
 	*scpa(ci, (uint64_t)(-1l)) |= RT_V;
 
@@ -374,20 +382,64 @@ int emulate_screcv(struct sbi_trap_regs *regs) {
 }
 
 int emulate_sctfer(struct sbi_trap_regs *regs) {
-	uint64_t addr;
+	int64_t ci;
+	uint64_t addr, sdtgt;
+	uint8_t *ptable, perm, existing_perms, *perms_addr;
+	uint32_t M;
 	struct sbi_trap_info trap;
 
 	addr = get_rs1();
-
-	emulate_scgrant(regs);
-
-	if(_emulate_scprot(addr, 0, regs, &trap.cause, &trap.tval)){
+	sdtgt = get_rs2();
+	perm = get_imm();
+	ci = sccck(addr, 1);
+	/* ChecK: valid address */
+	if (unlikely(ci < 0)) {
 		trap.epc = regs->mepc;
-    return sbi_trap_redirect(regs, &trap);
+		trap.cause = RISCV_EXCP_SECCELL_ILL_ADDR;
+		trap.tval = addr;
+		return sbi_trap_redirect(regs, &trap);
+	} else if (unlikely(ci == 0)) {
+	/* Check: For Valid cell */
+		trap.epc = regs->mepc;
+		trap.cause = RISCV_EXCP_SECCELL_INV_CELL_STATE;
+		trap.tval = 0;
+		return sbi_trap_redirect(regs, &trap);
 	}
 
+	ptable = (uint8_t *)(uintptr_t)((csr_read(CSR_SATP) & SATP64_PPN) << 12);
+	M = ((uint32_t *)ptable)[2];
+	if(unlikely((sdtgt == 0) || (sdtgt > M))) {
+		trap.epc = regs->mepc;
+		trap.cause = RISCV_EXCP_SECCELL_INV_SDID;
+		trap.tval = sdtgt;
+		return sbi_trap_redirect(regs, &trap);
+	}
+
+	if(unlikely(perm & ~RT_PERMS)) {
+		trap.epc = regs->mepc;
+		trap.cause = RISCV_EXCP_SECCELL_ILL_PERM;
+		trap.tval = (0 << 8) | (uint8_t)perm;
+		return sbi_trap_redirect(regs, &trap);
+  } else if(unlikely((perm & RT_PERMS) == 0)) {
+		trap.epc = regs->mepc;
+		trap.cause = RISCV_EXCP_SECCELL_ILL_PERM;
+		trap.tval = (1 << 8) | (uint8_t)perm;
+		return sbi_trap_redirect(regs, &trap);
+	}
+	perms_addr = scpa(ci, 0);
+	existing_perms = *perms_addr;
+	if(unlikely(perm & ~existing_perms)) {
+		trap.epc = regs->mepc;
+		trap.cause = RISCV_EXCP_SECCELL_ILL_PERM;
+		trap.tval = (2 << 8) | (uint8_t)perm;
+		return sbi_trap_redirect(regs, &trap);
+	}
+
+	*perms_addr = existing_perms & ~RT_PERMS;
+	*scga(ci, 0) = G(sdtgt, perm);
 	__asm__ __volatile("sfence.vma %[addr]"
 											:: [addr] "r" (addr));
+
 	regs->mepc += 4;
 	return 0;
 }
