@@ -475,7 +475,7 @@ int emulate_scexcl(struct sbi_trap_regs *regs) {
 		trap.epc = regs->mepc;
 		trap.cause = RISCV_EXCP_SECCELL_ILL_PERM;
 		trap.tval = (0 << 8) | (uint8_t)perm;
-		return -1;
+		return sbi_trap_redirect(regs, &trap);
   } else if(unlikely((perm & RT_PERMS) == 0)) {
 		trap.epc = regs->mepc;
 		trap.cause = RISCV_EXCP_SECCELL_ILL_PERM;
@@ -485,7 +485,7 @@ int emulate_scexcl(struct sbi_trap_regs *regs) {
 		trap.epc = regs->mepc;
 		trap.cause = RISCV_EXCP_SECCELL_ILL_PERM;
 		trap.tval = (2 << 8) | (uint8_t)perm;
-		return -1;
+        return sbi_trap_redirect(regs, &trap);
 	}
 
 	gperm = *scga(ci, usid) & RT_PERMS;
