@@ -1,8 +1,8 @@
 
 
 
-#include <string.h>
-#include <inttypes.h>
+#include <sbi/sbi_types.h>
+#include <sbi/sbi_string.h>
 #include <sbi/riscv_asm.h>
 #include <sbi/riscv_sc.h>
 
@@ -70,7 +70,7 @@ static uint32_t *scga(int64_t ci, uint64_t sd) {
 static inline int64_t find_cell(uint64_t *desc, uint64_t addr, uint64_t v) {
 	int64_t i = sccck(addr, v);
 	if (i > 0)
-		memcpy(desc, scca(i), 2 * sizeof(uint64_t));
+		sbi_memcpy(desc, scca(i), 2 * sizeof(uint64_t));
 	return i;
 }
 
